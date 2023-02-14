@@ -558,6 +558,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     @Override
     public boolean inEventLoop(Thread thread) {
+        // 判断当前线程是否是reactor线程
         return thread == this.thread;
     }
 
@@ -832,9 +833,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+        /*
+         * 因为execute(Runnable task)方法是public的，可能被用户代码所调用，
+         * 所以这里再次判断一下当前线程是否是reactor线程
+         *
+         */
         boolean inEventLoop = inEventLoop();
         addTask(task);
         if (!inEventLoop) {
+            // 如果还没创建reactor线程，则创建并启动
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -853,6 +860,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         }
 
+        // reactor线程可能被阻塞，所以需要唤醒线程
         if (!addTaskWakesUp && immediate) {
             wakeup(inEventLoop);
         }
@@ -948,10 +956,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        // 只有没启动才创建线程
         if (state == ST_NOT_STARTED) {
+            // 如果状态为未启动，那么启动线程并设置状态为已启动
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
+                    // 真正地线程创建
                     doStartThread();
                     success = true;
                 } finally {
@@ -986,6 +997,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                /*
+                 * 将线程绑定到NioEventLoop，这里创建过一次线程后，后续NioEventLoop每次execute执行任务的时候就不会再创建了
+                 * 虽然这里executor是ThreadPerTaskExecutor，每次execute都会new一个线程。
+                 * 因为后续NioEventLoop上execute任务，是往任务队列里面添加runnable实例（也就是任务），然后唤醒线程
+                 * 这个线程在阻塞、唤醒、执行任务之间轮流变换状态
+                 */
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -994,6 +1011,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 这里执行的run方法是Reactor模型的核心，直接转到NioEventLoop的run方法
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

@@ -73,11 +73,13 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         checkPositive(nThreads, "nThreads");
 
         if (executor == null) {
+            // 这里传入了默认的线程工厂，创建的线程是Thread的子类FastThreadLocalThread，对ThreadLocal进行了优化
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
+        // 创建NioEventLoop，默认情况下个数是CPU核心数的2倍
         children = new EventExecutor[nThreads];
-
+        // 每个线程对应一个NioEventLoop
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
@@ -108,6 +110,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 创建一个线程选择器
         chooser = chooserFactory.newChooser(children);
 
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {

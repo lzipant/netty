@@ -23,6 +23,10 @@ import java.util.NoSuchElementException;
 
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
+    /*
+     * 使用数组，put和remove(通过索引下标)操作可以实现稳定的O(1)时间复杂度，而HashSet最好才是O(1)，最差是O(n)
+     * 另外，数组遍历更加高效
+     */
     SelectionKey[] keys;
     int size;
 

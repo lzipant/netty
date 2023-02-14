@@ -474,12 +474,20 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 绑定事件循环器
             AbstractChannel.this.eventLoop = eventLoop;
 
+            // 判断当前线程是否是reactor线程
             if (eventLoop.inEventLoop()) {
+                // 进行注册
                 register0(promise);
             } else {
                 try {
+                    /*
+                     * ====================
+                     * NioEventLoop的启动入口
+                     * ====================
+                     */
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
@@ -505,20 +513,43 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                // 自旋（为什么要自旋？）尝试调用JDK底层selector进行注册，但是事件代码是0
                 doRegister();
                 neverRegistered = false;
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+                // 执行handlerAdded回调
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
+                // 传播channelRegistered事件
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+
+                /*
+                 * ======================== 特别重要 ==========================
+                 * 这里因为调用链比较绕，所以很容易搞混
+                 *
+                 * 这里如果注册的是NioServerSocketChannel，那么此时还没被bind，这里isActive会返回false
+                 * 后续执行bind的时候，会以异步的形式在HeadContext执行fireChannelActive，
+                 * 注意同时HeadContext的channelActive()方法也会被触发调用，
+                 * 最终会执行到AbstractNioUnsafe#doBeginRead，然后进行事件注册
+                 *
+                 * 这里如果注册的是NioSocketChannel，那么isActive会返回true（因为连接已经建立了），
+                 * firstRegistration也会是true，那么就直接在这里执行了fireChannelActive，
+                 * 然后一样地，HeadContext的channelActive()方法会被触发调用，
+                 * 最终会执行到AbstractNioUnsafe#doBeginRead，然后进行事件注册
+                 * ======================== 特别重要 ==========================
+                 */
                 if (isActive()) {
                     if (firstRegistration) {
+                        /*
+                         * 传播channelActive事件
+                         *
+                         */
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
@@ -559,6 +590,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             boolean wasActive = isActive();
             try {
+                // 调用JDK底层绑定端口
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -570,6 +602,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        // 传播channelActive事件
                         pipeline.fireChannelActive();
                     }
                 });

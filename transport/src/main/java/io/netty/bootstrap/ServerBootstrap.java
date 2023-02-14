@@ -143,11 +143,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
+                // 添加自定义的ChannelHandler
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
 
+                // 设置一个自定义的ChannelHandler
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -201,17 +203,29 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        // 新连接接入时被调用
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            // 为什么这里msg可以直接转为Channel
             final Channel child = (Channel) msg;
 
+            /*
+             * 给新连接添加用户自定义的handler处理器，这个childHandler是通过ServerBootstrap.childHandler方法传入的
+             * 通常是一个特殊的ChannelHandler，即ChannelInitializer。
+             * channel注册后，会执行ChannelInitializer的initChannel方法，然后并删除自身。
+             */
             child.pipeline().addLast(childHandler);
 
+            // 设置选项，主要是和TCP有关的一些参数
             setChannelOptions(child, childOptions, logger);
+            // 设置属性
             setAttributes(child, childAttrs);
 
             try {
+                /*
+                 * 绑定新channel到reactor线程，这里childGroup就是指的worker线程组
+                 */
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

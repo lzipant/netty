@@ -377,6 +377,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                /*
+                 * 拿到Java层面的channel，注册到java层面的selector上，
+                 * 并把netty中的channel作为附件挂在jdk层面的selector上，后续事件达到selector时，
+                 * 可以拿出netty层面的channel处理
+                 * 注意，这里注册的事件代码是0，表示还不关心任何事件，只是建立绑定关系
+                 */
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
@@ -411,6 +417,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         final int interestOps = selectionKey.interestOps();
         if ((interestOps & readInterestOp) == 0) {
+            // 进行真正的事件注册
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }

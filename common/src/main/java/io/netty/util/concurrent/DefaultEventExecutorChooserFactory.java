@@ -32,9 +32,12 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        // 根据nioEventLoop的数量是否是2的幂，来创建不同的线程选择器
         if (isPowerOfTwo(executors.length)) {
+            // 根据位运算来实现
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
+            // 通过简单累加取模来实现选择
             return new GenericEventExecutorChooser(executors);
         }
     }
