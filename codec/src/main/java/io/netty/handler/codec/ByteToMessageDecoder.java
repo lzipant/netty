@@ -275,8 +275,10 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             CodecOutputList out = CodecOutputList.newInstance();
             try {
                 first = cumulation == null;
+                // 进行数据累加
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
+                // 将字节数据组成业务数据包
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
@@ -297,6 +299,11 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                         }
                         cumulation = null;
                     } else if (++numReads >= discardAfterReads) {
+                        /*
+                         * 一般情况下，是在channelReadComplete方法中清理字节数组的，但是有时发送方发送太快，
+                         * 导致字节数组中的数据太多，整个数组会变得很大，如果一直没机会清理数组中已经解码过的数据，则相当于OOM，
+                         * 所以这里如果连续读取16次，字节数组中仍然有未被解码的数据，就会直接把解码过的数据丢弃
+                         */
                         // We did enough reads already try to discard some bytes, so we not risk to see a OOME.
                         // See https://github.com/netty/netty/issues/4275
                         numReads = 0;
@@ -342,6 +349,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         numReads = 0;
         discardSomeReadBytes();
         if (selfFiredChannelRead && !firedChannelRead && !ctx.channel().config().isAutoRead()) {
+            // 这里为什么要重新注册read事件？
             ctx.read();
         }
         firedChannelRead = false;
@@ -454,7 +462,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     }
                 }
 
+                // 记录一下有多少字节的数据待处理
                 int oldInputLength = in.readableBytes();
+                // 进行解码
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.
@@ -466,13 +476,15 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 }
 
                 if (out.isEmpty()) {
+                    // 如果拆包器没有读取数据
                     if (oldInputLength == in.readableBytes()) {
                         break;
-                    } else {
+                    } else { // 拆包器已经读取了部分数据，但还没读到一个业务数据包，则继续
                         continue;
                     }
                 }
 
+                // 如果进行了拆包，但是没读取到数据，则抛出异常
                 if (oldInputLength == in.readableBytes()) {
                     throw new DecoderException(
                             StringUtil.simpleClassName(getClass()) +
@@ -516,6 +528,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             throws Exception {
         decodeState = STATE_CALLING_CHILD_DECODE;
         try {
+            /*
+             *  进行解码，Netty中对协议的支持都体现在这个方法里面
+             */
             decode(ctx, in, out);
         } finally {
             boolean removePending = decodeState == STATE_HANDLER_REMOVED_PENDING;

@@ -198,11 +198,21 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     @Override
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
+        // 线程同步，因为channel可能被暴露给用户线程，所以要做并发控制
         synchronized (this) {
+            // 检查是否有重复的handler
             checkMultiplicity(handler);
 
+            /*
+             * 创建ChannelHandlerContext，
+             * 这里如果指定了name（不是null），那么直接检查名称是否重复了
+             * 如果没有指定name，则先生成名称
+             *
+             * 名称检查是会遍历pipeline中的所有context
+             */
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // 本质上就是一个双向链表的插入操作
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
@@ -220,6 +230,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 return this;
             }
         }
+        // 回调用户方法和设置状态
         callHandlerAdded0(newCtx);
         return this;
     }

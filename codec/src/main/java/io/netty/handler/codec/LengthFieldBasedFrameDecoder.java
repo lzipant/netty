@@ -402,23 +402,29 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
                 discardingTooLongFrame(in);
             }
 
+            // 如果当前的可读字节数小于长度域的字节数，那么直接返回不进行解码
             if (in.readableBytes() < lengthFieldEndOffset) {
                 return null;
             }
 
+            // 拿到长度域的实际偏移
             int actualLengthFieldOffset = in.readerIndex() + lengthFieldOffset;
+            // 拿到实际未调整过的包长度
             frameLength = getUnadjustedFrameLength(in, actualLengthFieldOffset, lengthFieldLength, byteOrder);
 
+            // 如果长度域的值是负数，则抛出异常
             if (frameLength < 0) {
                 failOnNegativeLengthField(in, frameLength, lengthFieldEndOffset);
             }
 
+            // 调整包的长度，后续做统一的解码
             frameLength += lengthAdjustment + lengthFieldEndOffset;
 
             if (frameLength < lengthFieldEndOffset) {
                 failOnFrameLengthLessThanLengthFieldEndOffset(in, frameLength, lengthFieldEndOffset);
             }
 
+            // 数据包长度大于了包最大允许长度，进入discarding模式
             if (frameLength > maxFrameLength) {
                 exceededFrameLength(in, frameLength);
                 return null;

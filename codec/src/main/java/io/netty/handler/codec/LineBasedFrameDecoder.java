@@ -96,19 +96,23 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+        // 找到换行符的位置
         final int eol = findEndOfLine(buffer);
         if (!discarding) {
             if (eol >= 0) {
                 final ByteBuf frame;
+                // 计算换行符和包的长度
                 final int length = eol - buffer.readerIndex();
                 final int delimLength = buffer.getByte(eol) == '\r'? 2 : 1;
 
+                // 丢弃异常数据
                 if (length > maxLength) {
                     buffer.readerIndex(eol + delimLength);
                     fail(ctx, length);
                     return null;
                 }
 
+                // 取数据包
                 if (stripDelimiter) {
                     frame = buffer.readRetainedSlice(length);
                     buffer.skipBytes(delimLength);
